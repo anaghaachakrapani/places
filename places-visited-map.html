@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5"/>
+<title>Places Visited — A Curated Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<style>
+:root{
+  --blush-50:#FCF5F2; --blush-100:#F8E9E4; --blush-200:#F2D8D4; --blush-300:#E9C2BE;
+  --rose:#C98B9B; --rose-deep:#AE6678;
+  --gold:#C7A24A; --gold-soft:#E6D09A; --gold-deep:#9C7A2C; --gold-line:#D8BE7E;
+  --ink:#3B2A2E; --ink-soft:#6E585C; --cream:#FBF7EF;
+  --panel:rgba(252,245,242,0.82);
+  --shadow-lg:0 24px 60px -22px rgba(94,52,58,0.45);
+  --shadow-sm:0 6px 22px -10px rgba(94,52,58,0.4);
+  --serif:'Fraunces',Georgia,serif; --sans:'Jost','Century Gothic',sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+body{
+  font-family:var(--sans); color:var(--ink); background:var(--blush-50);
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+#map{position:absolute; inset:0; background:var(--blush-100); z-index:1;}
+/* warm the neutral tiles toward blush + champagne */
+.leaflet-tile-pane{filter:sepia(0.30) hue-rotate(-12deg) saturate(1.12) brightness(1.03) contrast(0.95);}
+.leaflet-container{background:var(--blush-100); font-family:var(--sans);}
+.leaflet-control-attribution{background:rgba(251,247,239,0.7)!important; color:var(--ink-soft)!important; font-family:var(--sans); font-size:10px;}
+.leaflet-control-attribution a{color:var(--rose-deep)!important;}
+
+/* grain + glow atmosphere */
+.atmos{position:absolute; inset:0; z-index:2; pointer-events:none;}
+.atmos::before{content:""; position:absolute; inset:0;
+  background:radial-gradient(120% 80% at 12% 0%, rgba(231,194,190,0.45), transparent 45%),
+             radial-gradient(90% 70% at 100% 100%, rgba(199,162,74,0.16), transparent 55%);
+  mix-blend-mode:multiply;}
+.atmos::after{content:""; position:absolute; inset:0; opacity:0.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* ===== Header ===== */
+.header{position:absolute; top:22px; left:50%; transform:translateX(-50%); z-index:30;
+  text-align:center; pointer-events:none; width:max-content; max-width:90vw;}
+.header .eyebrow{font-family:var(--sans); font-weight:500; letter-spacing:.42em; font-size:11px;
+  color:var(--rose-deep); text-transform:uppercase; margin:0 0 4px; padding-left:.42em;}
+.header h1{font-family:var(--serif); font-weight:340; font-optical-sizing:auto; font-size:clamp(30px,5vw,54px);
+  line-height:.95; margin:0; color:var(--ink); letter-spacing:-.01em;}
+.header h1 em{font-style:italic; color:var(--rose-deep); font-weight:340;}
+.header .rule{display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px;}
+.header .rule span{height:1px; width:46px; background:linear-gradient(90deg,transparent,var(--gold));}
+.header .rule span:last-child{background:linear-gradient(90deg,var(--gold),transparent);}
+.header .rule b{font-family:var(--sans); font-weight:400; letter-spacing:.28em; font-size:10.5px;
+  color:var(--gold-deep); text-transform:uppercase;}
+
+/* ===== Side panel ===== */
+.panel{position:absolute; top:0; left:0; height:100%; width:344px; z-index:25;
+  background:var(--panel); backdrop-filter:blur(18px) saturate(1.2); -webkit-backdrop-filter:blur(18px) saturate(1.2);
+  border-right:1px solid rgba(216,190,126,0.5); box-shadow:var(--shadow-lg);
+  display:flex; flex-direction:column; transition:transform .5s cubic-bezier(.22,1,.36,1);}
+.panel-head{padding:26px 24px 14px; border-bottom:1px solid rgba(216,190,126,0.38);}
+.panel-head .label{font-family:var(--sans); letter-spacing:.34em; font-size:10px; text-transform:uppercase;
+  color:var(--gold-deep); margin-bottom:10px;}
+.panel-head h2{font-family:var(--serif); font-weight:330; font-size:27px; margin:0 0 2px; color:var(--ink);}
+.panel-head .count{font-family:var(--sans); font-size:12.5px; color:var(--ink-soft); letter-spacing:.02em;}
+
+.search{margin:16px 24px 6px; position:relative;}
+.search input{width:100%; padding:11px 14px 11px 36px; border:1px solid rgba(174,102,120,0.3);
+  background:rgba(255,255,255,0.55); border-radius:40px; font-family:var(--sans); font-size:13px; color:var(--ink);
+  outline:none; transition:border .25s, box-shadow .25s;}
+.search input::placeholder{color:#b69aa0;}
+.search input:focus{border-color:var(--gold); box-shadow:0 0 0 3px rgba(199,162,74,0.16);}
+.search svg{position:absolute; left:13px; top:50%; transform:translateY(-50%); width:15px; height:15px; stroke:var(--rose-deep);}
+
+.chips{display:flex; flex-wrap:wrap; gap:7px; padding:12px 24px 14px;}
+.chip{font-family:var(--sans); font-size:11px; letter-spacing:.06em; padding:6px 13px; border-radius:30px; cursor:pointer;
+  border:1px solid rgba(174,102,120,0.34); color:var(--rose-deep); background:transparent; transition:.22s; white-space:nowrap;}
+.chip:hover{border-color:var(--gold); color:var(--gold-deep);}
+.chip.active{background:linear-gradient(135deg,var(--rose),var(--rose-deep)); color:#fff; border-color:transparent;
+  box-shadow:0 6px 16px -8px rgba(174,102,120,0.8);}
+
+.list{flex:1; overflow-y:auto; padding:4px 12px 28px;}
+.list::-webkit-scrollbar{width:8px;}
+.list::-webkit-scrollbar-thumb{background:rgba(199,162,74,0.4); border-radius:8px;}
+.group-label{font-family:var(--sans); letter-spacing:.28em; font-size:10px; text-transform:uppercase; color:var(--gold-deep);
+  padding:16px 14px 7px; display:flex; align-items:center; gap:8px;}
+.group-label::after{content:""; flex:1; height:1px; background:linear-gradient(90deg,rgba(216,190,126,0.7),transparent);}
+.item{display:flex; align-items:center; gap:12px; padding:9px 12px; border-radius:13px; cursor:pointer;
+  transition:background .2s, transform .2s; opacity:0; transform:translateX(-8px);
+  animation:slidein .5s cubic-bezier(.22,1,.36,1) forwards;}
+@keyframes slidein{to{opacity:1; transform:none;}}
+.item:hover{background:rgba(255,255,255,0.6);}
+.item .mono{flex:0 0 auto; width:34px; height:34px; border-radius:50%; display:grid; place-items:center;
+  font-family:var(--serif); font-size:16px; font-weight:400; color:var(--gold-deep);
+  background:radial-gradient(circle at 32% 28%, #fff7e6, var(--gold-soft));
+  border:1px solid var(--gold-line); box-shadow:inset 0 1px 2px rgba(255,255,255,0.7), 0 3px 8px -4px rgba(156,122,44,0.6);}
+.item .meta{min-width:0;}
+.item .nm{font-family:var(--serif); font-size:14.5px; font-weight:380; color:var(--ink); line-height:1.15;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.item .ar{font-family:var(--sans); font-size:10.5px; letter-spacing:.07em; color:var(--rose-deep); text-transform:uppercase; margin-top:2px;}
+
+/* ===== Custom pins ===== */
+.pin-wrap{position:relative;}
+.pin-svg{display:block; filter:drop-shadow(0 6px 8px rgba(120,70,52,0.4)); transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+  transform-origin:50% 100%; opacity:0; animation:pindrop .55s cubic-bezier(.22,1,.36,1) forwards;}
+@keyframes pindrop{0%{opacity:0; transform:translateY(-14px) scale(.6);}100%{opacity:1; transform:none;}}
+.pin-mono{position:absolute; top:7px; left:0; width:100%; text-align:center; font-family:var(--serif);
+  font-weight:480; font-size:14px; color:#6a4a1e; pointer-events:none; opacity:0; animation:fadein .6s .15s forwards;}
+@keyframes fadein{to{opacity:1;}}
+.leaflet-marker-icon:hover .pin-svg, .pin-hot .pin-svg{transform:scale(1.22) translateY(-2px);
+  filter:drop-shadow(0 12px 14px rgba(120,70,52,0.5));}
+
+/* cluster bubbles */
+.clust{display:grid; place-items:center; border-radius:50%; font-family:var(--serif); color:#5e3f16; font-weight:460;
+  background:radial-gradient(circle at 34% 30%, #fff6e2, var(--gold-soft) 62%, #d9bd78);
+  border:1.5px solid #fff3d6; box-shadow:0 8px 22px -8px rgba(140,100,40,0.85), inset 0 1px 3px rgba(255,255,255,0.9);
+  position:relative;}
+.clust::after{content:""; position:absolute; inset:-7px; border-radius:50%; border:1px solid rgba(199,162,74,0.4);}
+
+/* tooltip = name + monogram only */
+.leaflet-tooltip.lux-tip{background:var(--cream); border:1px solid var(--gold-line); color:var(--ink);
+  border-radius:30px; padding:5px 14px 5px 6px; box-shadow:var(--shadow-sm); font-family:var(--serif);
+  font-size:14px; font-weight:400; white-space:nowrap; display:flex; align-items:center; gap:9px;}
+.leaflet-tooltip.lux-tip::before{display:none;}
+.lux-tip .tmono{width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:12.5px;
+  color:var(--gold-deep); background:radial-gradient(circle at 32% 28%, #fff7e6, var(--gold-soft));
+  border:1px solid var(--gold-line);}
+
+/* popup */
+.leaflet-popup.lux-pop .leaflet-popup-content-wrapper{background:var(--cream); border:1px solid var(--gold-line);
+  border-radius:18px; box-shadow:var(--shadow-lg); padding:0;}
+.leaflet-popup.lux-pop .leaflet-popup-content{margin:0; width:230px!important;}
+.leaflet-popup.lux-pop .leaflet-popup-tip{background:var(--cream); border:1px solid var(--gold-line);}
+.leaflet-popup.lux-pop a.leaflet-popup-close-button{color:var(--rose-deep); top:8px; right:9px;}
+.pop-in{padding:18px 18px 16px; text-align:center;}
+.pop-mono{width:54px; height:54px; margin:0 auto 11px; border-radius:50%; display:grid; place-items:center;
+  font-family:var(--serif); font-size:25px; font-weight:430; color:var(--gold-deep);
+  background:radial-gradient(circle at 32% 28%, #fff7e6, var(--gold-soft));
+  border:1px solid var(--gold-line); box-shadow:inset 0 1px 3px rgba(255,255,255,0.8), 0 6px 16px -7px rgba(156,122,44,0.7);}
+.pop-name{font-family:var(--serif); font-size:18px; font-weight:380; line-height:1.2; color:var(--ink); margin-bottom:4px;}
+.pop-area{font-family:var(--sans); font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--rose-deep);}
+.pop-link{display:inline-flex; align-items:center; gap:6px; margin-top:13px; font-family:var(--sans); font-size:11px;
+  letter-spacing:.13em; text-transform:uppercase; color:var(--gold-deep); text-decoration:none; padding:7px 15px;
+  border:1px solid var(--gold-line); border-radius:30px; transition:.22s;}
+.pop-link:hover{background:var(--gold); color:#fff; border-color:var(--gold);}
+
+/* zoom control restyle */
+.leaflet-bar{border:none!important; box-shadow:var(--shadow-sm)!important;}
+.leaflet-bar a{background:var(--cream)!important; color:var(--rose-deep)!important; border-bottom:1px solid rgba(216,190,126,0.5)!important;
+  width:34px!important; height:34px!important; line-height:34px!important; font-size:18px!important; font-family:var(--sans);}
+.leaflet-bar a:hover{background:var(--gold-soft)!important; color:var(--gold-deep)!important;}
+.leaflet-control-zoom{margin-bottom:30px!important; margin-right:18px!important;}
+
+/* panel toggle (mobile) */
+.toggle{position:absolute; z-index:31; top:20px; left:18px; display:none; width:42px; height:42px; border-radius:50%;
+  background:var(--cream); border:1px solid var(--gold-line); box-shadow:var(--shadow-sm); cursor:pointer; place-items:center;}
+.toggle svg{width:18px; height:18px; stroke:var(--rose-deep);}
+
+/* loader */
+.loader{position:fixed; inset:0; z-index:60; background:var(--blush-50); display:grid; place-items:center;
+  transition:opacity .7s ease; }
+.loader.gone{opacity:0; pointer-events:none;}
+.loader .lo{text-align:center;}
+.loader .lo .e{font-family:var(--sans); letter-spacing:.4em; font-size:11px; color:var(--rose-deep); text-transform:uppercase; margin-bottom:10px;}
+.loader .lo h3{font-family:var(--serif); font-style:italic; font-weight:330; font-size:34px; color:var(--ink); margin:0;}
+.loader .lo .bar{width:130px; height:2px; margin:18px auto 0; background:rgba(216,190,126,0.4); overflow:hidden; border-radius:2px;}
+.loader .lo .bar i{display:block; height:100%; width:40%; background:linear-gradient(90deg,var(--rose),var(--gold));
+  animation:load 1.1s infinite cubic-bezier(.65,0,.35,1);}
+@keyframes load{0%{transform:translateX(-120%);}100%{transform:translateX(320%);}}
+
+@media(max-width:760px){
+  .panel{width:86vw; max-width:340px; transform:translateX(-104%);}
+  .panel.open{transform:none;}
+  .toggle{display:grid;}
+  .header{top:16px;}
+  .header .eyebrow{font-size:10px;}
+  .leaflet-control-zoom{display:none;}
+}
+</style>
+</head>
+<body>
+<div class="loader" id="loader"><div class="lo"><div class="e">A Curated Map</div><h3>Places Visited</h3><div class="bar"><i></i></div></div></div>
+
+<div id="map"></div>
+<div class="atmos"></div>
+
+<!-- shared gold gradient defs for pins -->
+<svg width="0" height="0" style="position:absolute"><defs>
+  <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#F3DCA0"/><stop offset="42%" stop-color="#D9B863"/>
+    <stop offset="100%" stop-color="#A9842F"/>
+  </linearGradient>
+  <radialGradient id="goldCore" cx="38%" cy="32%" r="75%">
+    <stop offset="0%" stop-color="#FFF8E8"/><stop offset="100%" stop-color="#F0DAA6"/>
+  </radialGradient>
+</defs></svg>
+
+<div class="header">
+  <p class="eyebrow">A Curated Map</p>
+  <h1>Places <em>Visited</em></h1>
+  <div class="rule"><span></span><b id="hcount">139 Spots</b><span></span></div>
+</div>
+
+<button class="toggle" id="toggle" aria-label="Toggle list"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+
+<aside class="panel" id="panel">
+  <div class="panel-head">
+    <div class="label">The Collection</div>
+    <h2>Where I've Been</h2>
+    <div class="count" id="pcount"></div>
+  </div>
+  <div class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input id="search" type="text" placeholder="Search a place…" autocomplete="off"/>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="list" id="list"></div>
+</aside>
+
+<script>
+const PLACES = [{"name": "Ajji House by Subko", "url": "https://www.google.com/maps/place/Ajji+House+by+Subko/data=!4m2!3m1!1s0x3bae15279a3b7d0d:0x1b608f5152ec73ca", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.9716, "lng": 77.5946}, {"name": "Original Burger Co. : Koramangala Bangalore", "url": "https://www.google.com/maps/place/Original+Burger+Co.+:+Koramangala+Bangalore/data=!4m2!3m1!1s0x3bae15ad5045f645:0x64b09e6e1f75a994", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.9352, "lng": 77.6245}, {"name": "Airlines Hotel", "url": "https://www.google.com/maps/place/Airlines+Hotel/data=!4m2!3m1!1s0x3bae16797b5c6ad5:0x83334d052c61949c", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.970789, "lng": 77.595362}, {"name": "Beyondburg Inc. St. Mark's Road", "url": "https://www.google.com/maps/place/Beyondburg+Inc.+St.+Mark's+Road/data=!4m2!3m1!1s0x3bae17571e00d023:0x741c195a522594e7", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.971736, "lng": 77.59301}, {"name": "Babka Goa, Coffee Bar | Bakery | Patisserie", "url": "https://www.google.com/maps/place/Babka+Goa,+Coffee+Bar+%7C+Bakery+%7C+Patisserie/data=!4m2!3m1!1s0x3bbfeb45651444c5:0x73c18062f5d5f44b", "metro": "Goa", "area": "North Goa", "lat": 15.58, "lng": 73.74}, {"name": "PAZ GOA CAFE Vagator", "url": "https://www.google.com/maps/place/PAZ+GOA+CAFE+Vagator/data=!4m2!3m1!1s0x3bbfe9610627af29:0x803e1bc19386dcd0", "metro": "Goa", "area": "Vagator", "lat": 15.5966, "lng": 73.7411}, {"name": "Bean Me Up", "url": "https://www.google.com/maps/place/Bean+Me+Up/data=!4m2!3m1!1s0x3bbfe983f642d3df:0x4a6bf50d7db9738c", "metro": "Goa", "area": "North Goa", "lat": 15.579189, "lng": 73.740771}, {"name": "Hideaway Café and Bar", "url": "https://www.google.com/maps/place/Hideaway+Caf%C3%A9+and+Bar/data=!4m2!3m1!1s0x3bbfe9711be889dd:0xccca9b2f772cf49c", "metro": "Goa", "area": "North Goa", "lat": 15.580136, "lng": 73.738391}, {"name": "Chinita Real Mexican Food Koramangala", "url": "https://www.google.com/maps/place/Chinita+Real+Mexican+Food+Koramangala/data=!4m2!3m1!1s0x3bae1444d0b1ee5f:0x95cb965a3e55b631", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.934389, "lng": 77.625262}, {"name": "Maffei Kitchen", "url": "https://www.google.com/maps/place/Maffei+Kitchen/data=!4m2!3m1!1s0x3bae15758f2e2679:0xd227bcd119f71ec6", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.972759, "lng": 77.596152}, {"name": "The Bier Library", "url": "https://www.google.com/maps/place/The+Bier+Library/data=!4m2!3m1!1s0x3bae1567222caab1:0xb79813f6366bfe3c", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.969434, "lng": 77.594207}, {"name": "K-OS The GameBar", "url": "https://www.google.com/maps/place/K-OS+The+GameBar/data=!4m2!3m1!1s0x3bae158d19c92915:0xd69f791cbdcf23e4", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.973675, "lng": 77.593245}, {"name": "Bob's Bar - Koramangala", "url": "https://www.google.com/maps/place/Bob's+Bar+-+Koramangala/data=!4m2!3m1!1s0x3bae1561cb8d63d3:0x1596256ce925f630", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.935336, "lng": 77.62291}, {"name": "Badmaash Koramangala", "url": "https://www.google.com/maps/place/Badmaash+Koramangala/data=!4m2!3m1!1s0x3bae154b59d09177:0xcd1e01d0120c50a1", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.936359, "lng": 77.626051}, {"name": "Corner House icecreams", "url": "https://www.google.com/maps/place/Corner+House+icecreams/data=!4m2!3m1!1s0x3bae144e42b316d7:0x595f2328a7b434e7", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.9709, "lng": 77.59727}, {"name": "Bamey's Restro Cafe", "url": "https://www.google.com/maps/place/Bamey's+Restro+Cafe/data=!4m2!3m1!1s0x3bae144e497d400b:0xa92dfcb3c0a98b94", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.970259, "lng": 77.59195}, {"name": "Bier Garden", "url": "https://www.google.com/maps/place/Bier+Garden/data=!4m2!3m1!1s0x3bae150000eb8ce1:0x2b668c85074dc966", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.974522, "lng": 77.595695}, {"name": "ROMA Italian Deli", "url": "https://www.google.com/maps/place/ROMA+Italian+Deli/data=!4m2!3m1!1s0x3bae1526f023bbd1:0x46590607fd12f9a8", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.96855, "lng": 77.595892}, {"name": "Café Amudham Koramangala", "url": "https://www.google.com/maps/place/Caf%C3%A9+Amudham+Koramangala/data=!4m2!3m1!1s0x3bae153a6ac9be51:0x1fcd5426a48f832f", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.933034, "lng": 77.624107}, {"name": "Milano Ice Cream | Milano Pizza - Koramangala", "url": "https://www.google.com/maps/place/Milano+Ice+Cream+%7C+Milano+Pizza+-+Koramangala/data=!4m2!3m1!1s0x3bae15e26951043b:0x5faf43b26ab2549e", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.937275, "lng": 77.623145}, {"name": "Blue Tokai Coffee Roasters", "url": "https://www.google.com/maps/place/Blue+Tokai+Coffee+Roasters/data=!4m2!3m1!1s0x3bae1532f14f080b:0x9c9ce44f8e94e146", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.973074, "lng": 77.591367}, {"name": "Nagarjuna Restaurant Since 1984 - Koramangala", "url": "https://www.google.com/maps/place/Nagarjuna+Restaurant+Since+1984+-+Koramangala/data=!4m2!3m1!1s0x3bae145ac5ee2b53:0xbbcd34ba8728cff7", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.9345, "lng": 77.62717}, {"name": "Moplah's", "url": "https://www.google.com/maps/place/Moplah's/data=!4m2!3m1!1s0x3bae1528a7d2b5cb:0x1a4c4178ac848107", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.972692, "lng": 77.598172}, {"name": "\"THAR\" The Taste of Rajasthan", "url": "https://www.google.com/maps/place/%22THAR%22+The+Taste+of+Rajasthan/data=!4m2!3m1!1s0x3bae156833667b63:0xaf1f39c40f2980d0", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.968303, "lng": 77.592639}, {"name": "The Filter Coffee - Koramangala", "url": "https://www.google.com/maps/place/The+Filter+Coffee+-+Koramangala/data=!4m2!3m1!1s0x3bae15f4f7831fcf:0xde54532654c44424", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.933859, "lng": 77.62185}, {"name": "Sathya's", "url": "https://www.google.com/maps/place/Sathya's/data=!4m2!3m1!1s0x3bae145e748546a9:0x13849169f94742d7", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.975474, "lng": 77.593726}, {"name": "Just Loaf", "url": "https://www.google.com/maps/place/Just+Loaf/data=!4m2!3m1!1s0x3bae15f3413e3f3f:0x4640c662d66debae", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.969233, "lng": 77.598055}, {"name": "The Reservoire Koramangala", "url": "https://www.google.com/maps/place/The+Reservoire+Koramangala/data=!4m2!3m1!1s0x3bae145b2129761f:0x37f6b789d4c61c24", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.938122, "lng": 77.625595}, {"name": "Anand Sweets - Koramangala", "url": "https://www.google.com/maps/place/Anand+Sweets+-+Koramangala/data=!4m2!3m1!1s0x3bae14457eefbbef:0x60d5b56f3125d78a", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.93215, "lng": 77.625792}, {"name": "Glens BakeHouse", "url": "https://www.google.com/maps/place/Glens+BakeHouse/data=!4m2!3m1!1s0x3bae153e6a7a120b:0x9a80d1a7ed5dab43", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.971053, "lng": 77.590264}, {"name": "Kebapci", "url": "https://www.google.com/maps/place/Kebapci/data=!4m2!3m1!1s0x3bae1522485b7a09:0xdf2264ddcc955bf9", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.974964, "lng": 77.59751}, {"name": "Sour House", "url": "https://www.google.com/maps/place/Sour+House/data=!4m2!3m1!1s0x3bae15729213dac7:0xf3bd1aac5aace26b", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.967068, "lng": 77.594792}, {"name": "Brunch Project", "url": "https://www.google.com/maps/place/Brunch+Project/data=!4m2!3m1!1s0x3bae152f3fa4da89:0xc1182663a49d831f", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.974908, "lng": 77.591222}, {"name": "154 Breakfast Club", "url": "https://www.google.com/maps/place/154+Breakfast+Club/data=!4m2!3m1!1s0x3bae145e73604653:0xb64a99330c93faf7", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.971378, "lng": 77.599515}, {"name": "ibaco - Koramangala, Bengaluru", "url": "https://www.google.com/maps/place/ibaco+-+Koramangala,+Bengaluru/data=!4m2!3m1!1s0x3bae145cc41777a1:0x430771556a7380af", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.936674, "lng": 77.621267}, {"name": "Third Wave Coffee", "url": "https://www.google.com/maps/place/Third+Wave+Coffee/data=!4m2!3m1!1s0x3bae1549cc5cf6f5:0x3b9120fad40e4ffc", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.968448, "lng": 77.590724}, {"name": "Shetty Lunch Home - Koramangala", "url": "https://www.google.com/maps/place/Shetty+Lunch+Home+-+Koramangala/data=!4m2!3m1!1s0x3bae15e5706bd985:0xb6b866fde0267698", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.936292, "lng": 77.628072}, {"name": "Pasta Street Koramangala", "url": "https://www.google.com/maps/place/Pasta+Street+Koramangala/data=!4m2!3m1!1s0x3bae15c2ddf2f511:0xde2ced598af4a114", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.931903, "lng": 77.622539}, {"name": "Starbucks", "url": "https://www.google.com/maps/place/Starbucks/data=!4m2!3m1!1s0x3bae15f838e98bb9:0xd036372800056a7c", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.976596, "lng": 77.59529}, {"name": "Big bean cafe", "url": "https://www.google.com/maps/place/Big+bean+cafe/data=!4m2!3m1!1s0x3bae150022262279:0xaaa4992f36a5074f", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.967365, "lng": 77.597624}, {"name": "CHIN LUNG RESTO-BAR, KORAMANGALA", "url": "https://www.google.com/maps/place/CHIN+LUNG+RESTO-BAR,+KORAMANGALA/data=!4m2!3m1!1s0x3bae153d6ae32ff7:0x26b0987b353ab1ca", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.939074, "lng": 77.623626}, {"name": "Al Taza - Koramangala", "url": "https://www.google.com/maps/place/Al+Taza+-+Koramangala/data=!4m2!3m1!1s0x3bae155ee37de86b:0x67f3e60e242f5432", "metro": "Bengaluru", "area": "Koramangala", "lat": 12.932833, "lng": 77.627955}, {"name": "Naturals Ice Cream", "url": "https://www.google.com/maps/place/Naturals+Ice+Cream/data=!4m2!3m1!1s0x3bae14430a02b0f5:0x64d53c30a030c34c", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.972758, "lng": 77.589319}, {"name": "Sri Vishnu Grand", "url": "https://www.google.com/maps/place/Sri+Vishnu+Grand/data=!4m2!3m1!1s0x3bae150020a5ef79:0x514519159a464bf6", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.974279, "lng": 77.599398}, {"name": "Krust Cafe", "url": "https://www.google.com/maps/place/Krust+Cafe/data=!4m2!3m1!1s0x3bae153b009a205d:0x8e7ef5ab9c2ac393", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.96636, "lng": 77.592884}, {"name": "Arogya Ahaara HSR", "url": "https://www.google.com/maps/place/Arogya+Ahaara+HSR/data=!4m2!3m1!1s0x3bae15dacad0fb49:0x5564d565b67013aa", "metro": "Bengaluru", "area": "HSR Layout", "lat": 12.9116, "lng": 77.6389}, {"name": "Gavran Misal", "url": "https://www.google.com/maps/place/Gavran+Misal/data=!4m2!3m1!1s0x3bae150eec4832ab:0x2254935cb751923", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.976692, "lng": 77.592186}, {"name": "Third Wave Coffee", "url": "https://www.google.com/maps/place/Third+Wave+Coffee/data=!4m2!3m1!1s0x3bae15d4e7b9855f:0xd0ee7b2b7a5b87ae", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.969393, "lng": 77.60001}, {"name": "Aligarh House Restaurant - HSR", "url": "https://www.google.com/maps/place/Aligarh+House+Restaurant+-+HSR/data=!4m2!3m1!1s0x3bae1570d7a8549f:0x3d107e987ed1f50f", "metro": "Bengaluru", "area": "HSR Layout", "lat": 12.910789, "lng": 77.639662}, {"name": "Mast Marathi Restaurant | Veg Restaurant in HSR Layout | Marathi Restaurant in HSR Layout", "url": "https://www.google.com/maps/place/Mast+Marathi+Restaurant+%7C+Veg+Restaurant+in+HSR+Layout+%7C+Marathi+Restaurant+%0Ain+HSR+Layout/data=!4m2!3m1!1s0x3bae153081b4bcf1:0xa2b6aa78c578c1b0", "metro": "Bengaluru", "area": "HSR Layout", "lat": 12.911736, "lng": 77.63731}, {"name": "Raghavendra Tiffin HSR Layout", "url": "https://www.google.com/maps/place/Raghavendra+Tiffin+HSR+Layout/data=!4m2!3m1!1s0x3bae148df23ff58b:0xc182551247e6210d", "metro": "Bengaluru", "area": "HSR Layout", "lat": 12.912759, "lng": 77.640451}, {"name": "HSR High Street 2.0", "url": "https://www.google.com/maps/place/HSR+High+Street+2.0/data=!4m2!3m1!1s0x3bae15b282d8cd67:0x88bc65d1187dff8", "metro": "Bengaluru", "area": "HSR Layout", "lat": 12.909434, "lng": 77.638507}, {"name": "McDonald's", "url": "https://www.google.com/maps/place/McDonald's/data=!4m2!3m1!1s0x3bae1491dd510647:0x883f672297255df8", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.969631, "lng": 77.588979}, {"name": "Namaste", "url": "https://www.google.com/maps/place/Namaste/data=!4m2!3m1!1s0x3bae15b136574a47:0x328b5f282d18b230", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.976843, "lng": 77.597429}, {"name": "Bramha Cafe", "url": "https://www.google.com/maps/place/Bramha+Cafe/data=!4m2!3m1!1s0x3bae1500451069d3:0x85bb2f6dd351ffd6", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.965774, "lng": 77.596175}, {"name": "IDC Kitchen @ HSR Layout", "url": "https://www.google.com/maps/place/IDC+Kitchen+@+HSR+Layout/data=!4m2!3m1!1s0x3bae155e97da0975:0x2e294a416491233e", "metro": "Bengaluru", "area": "HSR Layout", "lat": 12.913675, "lng": 77.637546}, {"name": "TOKYO RAMEN SUZUKI", "url": "https://www.google.com/maps/place/TOKYO+RAMEN+SUZUKI/data=!4m2!3m1!1s0x3bae15547fc61a57:0x96da06974c95a2ac", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.974913, "lng": 77.589314}, {"name": "Third Wave Coffee", "url": "https://www.google.com/maps/place/Third+Wave+Coffee/data=!4m2!3m1!1s0x3bae1586de9c9b8d:0xf32168e8537d688b", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.972653, "lng": 77.600893}, {"name": "Café Amudham HSR Layout", "url": "https://www.google.com/maps/place/Caf%C3%A9+Amudham+HSR+Layout/data=!4m2!3m1!1s0x3bae154958ef6dc1:0x3a2a37bff5c1c8da", "metro": "Bengaluru", "area": "HSR Layout", "lat": 12.9109, "lng": 77.64157}, {"name": "Amintiri - Cafe | Patisserie | Gifting", "url": "https://www.google.com/maps/place/Amintiri+-+Cafe+%7C+Patisserie+%7C+Gifting/data=!4m2!3m1!1s0x3bae1500755f1779:0xc772145af505d93", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.966605, "lng": 77.590629}, {"name": "Milano Ice Cream - Jayanagar", "url": "https://www.google.com/maps/place/Milano+Ice+Cream+-+Jayanagar/data=!4m2!3m1!1s0x3bae15b616e324f1:0x9b9054dfcb929f89", "metro": "Bengaluru", "area": "Jayanagar", "lat": 12.925, "lng": 77.5938}, {"name": "House of Commons", "url": "https://www.google.com/maps/place/House+of+Commons/data=!4m2!3m1!1s0x3bae17e10b0d2aa1:0xe3d59e7315e5593b", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.977992, "lng": 77.594057}, {"name": "The Kind Roastery and Brew Room, Bellandur", "url": "https://www.google.com/maps/place/The+Kind+Roastery+and+Brew+Room,+Bellandur/data=!4m2!3m1!1s0x3bae139f7019a761:0xcdb676c521ab9fc1", "metro": "Bengaluru", "area": "Bellandur", "lat": 12.9259, "lng": 77.6762}, {"name": "Biergarten Bellandur", "url": "https://www.google.com/maps/place/Biergarten+Bellandur/data=!4m2!3m1!1s0x3bae1300533d58e1:0x86a04be4c71573f5", "metro": "Bengaluru", "area": "Bellandur", "lat": 12.925089, "lng": 77.676962}, {"name": "Nagarjuna Restaurant Since 1984 - Sarjapur Road", "url": "https://www.google.com/maps/place/Nagarjuna+Restaurant+Since+1984+-+Sarjapur+Road/data=!4m2!3m1!1s0x3bae13002cc685b5:0x5e1d0ccc599cb59c", "metro": "Bengaluru", "area": "Sarjapur Road", "lat": 12.901, "lng": 77.687}, {"name": "Byg Brewski Brewing Company", "url": "https://www.google.com/maps/place/Byg+Brewski+Brewing+Company/data=!4m2!3m1!1s0x3bae1311904d59e9:0x2242474248a6064d", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.96718, "lng": 77.599502}, {"name": "The Fisherman's Wharf", "url": "https://www.google.com/maps/place/The+Fisherman's+Wharf/data=!4m2!3m1!1s0x3bae13701fd82d8f:0xb3edfcc323516a9b", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.971633, "lng": 77.587827}, {"name": "Roxie", "url": "https://www.google.com/maps/place/Roxie/data=!4m2!3m1!1s0x3bae137cd088882f:0xcb059418e88bcebe", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.976095, "lng": 77.599686}, {"name": "Glen's Bakehouse", "url": "https://www.google.com/maps/place/Glen's+Bakehouse/data=!4m2!3m1!1s0x3bae16783457a129:0x36cc833f855485ba", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.964848, "lng": 77.593957}, {"name": "UB City", "url": "https://www.google.com/maps/place/UB+City/data=!4m2!3m1!1s0x3bae16775069abf7:0xe138768bb2a0df8a", "metro": "Bengaluru", "area": "UB City", "lat": 12.9716, "lng": 77.5963}, {"name": "The Caffeine Baar Cafe / Church Street", "url": "https://www.google.com/maps/place/The+Caffeine+Baar+Cafe+%2F+Church+Street/data=!4m2!3m1!1s0x3bae17e3a779f1c1:0x15e86edd434271dd", "metro": "Bengaluru", "area": "Church Street", "lat": 12.9748, "lng": 77.6068}, {"name": "Kazan Japanese Ramen", "url": "https://www.google.com/maps/place/Kazan+Japanese+Ramen/data=!4m2!3m1!1s0x3bae171feca7b071:0x1c9dc00118913f51", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.977073, "lng": 77.590339}, {"name": "Milano Ice Cream", "url": "https://www.google.com/maps/place/Milano+Ice+Cream/data=!4m2!3m1!1s0x3bae17c50d73db61:0xb1404c78f6b0d42a", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.970354, "lng": 77.601624}, {"name": "Amintiri - Cafe | Patisserie | Gifting", "url": "https://www.google.com/maps/place/Amintiri+-+Cafe+%7C+Patisserie+%7C+Gifting/data=!4m2!3m1!1s0x3bae17178cb3fb23:0x802d7163a5ac9f60", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.96785, "lng": 77.588482}, {"name": "23rd Street Pizza", "url": "https://www.google.com/maps/place/23rd+Street+Pizza/data=!4m2!3m1!1s0x3bae17001583934d:0xb2487febdaf98449", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.978475, "lng": 77.596535}, {"name": "11grams Coffee Roasters", "url": "https://www.google.com/maps/place/11grams+Coffee+Roasters/data=!4m2!3m1!1s0x3bae1731a65f2641:0xc26f8a8529ae385c", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.965182, "lng": 77.597978}, {"name": "Guerilla Diner", "url": "https://www.google.com/maps/place/Guerilla+Diner/data=!4m2!3m1!1s0x3bae17b8908f5da1:0xf290fe4f42765215", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.974138, "lng": 77.58758}, {"name": "Bäcker&Charlie", "url": "https://www.google.com/maps/place/B%C3%A4cker%26Charlie/data=!4m2!3m1!1s0x3bae17001207894d:0xeb4bd6b3389f021", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.974381, "lng": 77.601614}, {"name": "Boteco - Restaurante Brasileiro (Indiqube Symphony, M.G. Road)", "url": "https://www.google.com/maps/place/Boteco+-+Restaurante+Brasileiro+(Indiqube+Symphony,+M.G.+Road)/data=!4m2!3m1!1s0x3bae17e1d0a13d69:0xf9be1419d46205be", "metro": "Bengaluru", "area": "MG Road", "lat": 12.975, "lng": 77.6094}, {"name": "Jamming Goat 3.0", "url": "https://www.google.com/maps/place/Jamming+Goat+3.0/data=!4m2!3m1!1s0x3bae15f290fc4161:0xd74a7a7cfe53ce30", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.964859, "lng": 77.59132}, {"name": "ZLB23 Speakeasy", "url": "https://www.google.com/maps/place/ZLB23+Speakeasy/data=!4m2!3m1!1s0x3bae150014195e1d:0x8aee9bee3fe45dc4", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.978807, "lng": 77.592321}, {"name": "The Fatty Bao", "url": "https://www.google.com/maps/place/The+Fatty+Bao/data=!4m2!3m1!1s0x3bae16a9d8462d9f:0x380971d8bf0df28f", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.967745, "lng": 77.601346}, {"name": "Cafe Noir Indiranagar", "url": "https://www.google.com/maps/place/Cafe+Noir+Indiranagar/data=!4m2!3m1!1s0x3bae178c9d3638dd:0xa2d48075ea7281e8", "metro": "Bengaluru", "area": "Indiranagar", "lat": 12.9719, "lng": 77.6412}, {"name": "Conçu Indiranagar", "url": "https://www.google.com/maps/place/Con%C3%A7u+Indiranagar/data=!4m2!3m1!1s0x3bae1772b9994213:0x334522c93c07f852", "metro": "Bengaluru", "area": "Indiranagar", "lat": 12.971089, "lng": 77.641962}, {"name": "Corner House - Indiranagar", "url": "https://www.google.com/maps/place/Corner+House+-+Indiranagar/data=!4m2!3m1!1s0x3bae17a722594171:0x594150ed72e06982", "metro": "Bengaluru", "area": "Indiranagar", "lat": 12.972036, "lng": 77.63961}, {"name": "Magnolia Bakery", "url": "https://www.google.com/maps/place/Magnolia+Bakery/data=!4m2!3m1!1s0x3bae177a4ce23e69:0x484b35ab9407dfdf", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.969985, "lng": 77.586874}, {"name": "CHIN LUNG BREWERY INDIRANAGAR", "url": "https://www.google.com/maps/place/CHIN+LUNG+BREWERY+INDIRANAGAR/data=!4m2!3m1!1s0x3bae1500057af219:0xf3eae0e9c3286bbc", "metro": "Bengaluru", "area": "Indiranagar", "lat": 12.973059, "lng": 77.642752}, {"name": "Bob's Bar", "url": "https://www.google.com/maps/place/Bob's+Bar/data=!4m2!3m1!1s0x3bae141d25a5ab49:0xf51d81396da23fd9", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.97794, "lng": 77.599224}, {"name": "LICK | Lavonne Ice Cream Kitchen", "url": "https://www.google.com/maps/place/LICK+%7C+Lavonne+Ice+Cream+Kitchen/data=!4m2!3m1!1s0x3bae150003f23731:0xe49cda73e1448c4b", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.963805, "lng": 77.595595}, {"name": "Pizza 4P's Indiranagar", "url": "https://www.google.com/maps/place/Pizza+4P's+Indiranagar/data=!4m2!3m1!1s0x3bae17320b4595d9:0x11e174808d27ae53", "metro": "Bengaluru", "area": "Indiranagar", "lat": 12.969734, "lng": 77.640807}, {"name": "Brik Oven - Woodfired Style Pizzas (Indiranagar)", "url": "https://www.google.com/maps/place/Brik+Oven+-+Woodfired+Style+Pizzas+(Indiranagar)/data=!4m2!3m1!1s0x3bae179e89c6b38b:0xd289d4f8e8f76016", "metro": "Bengaluru", "area": "Indiranagar", "lat": 12.973975, "lng": 77.639845}, {"name": "Toit", "url": "https://www.google.com/maps/place/Toit/data=!4m2!3m1!1s0x3bae16a515404273:0x5a60fbf524977445", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.976743, "lng": 77.588403}, {"name": "Milano Ice Cream", "url": "https://www.google.com/maps/place/Milano+Ice+Cream/data=!4m2!3m1!1s0x3bae16afc4745c01:0xa904ae35cc8d4cf4", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.97189, "lng": 77.602812}, {"name": "Oia Bangalore", "url": "https://www.google.com/maps/place/Oia+Bangalore/data=!4m2!3m1!1s0x3bae19a1346d6245:0xbc5cafe1b80b1378", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.965927, "lng": 77.58869}, {"name": "Taaza Thindi", "url": "https://www.google.com/maps/place/Taaza+Thindi/data=!4m2!3m1!1s0x3bae15a776da381b:0x5948b61bc4c0140a", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.979747, "lng": 77.595029}, {"name": "Bengaluru Cafe", "url": "https://www.google.com/maps/place/Bengaluru+Cafe/data=!4m2!3m1!1s0x3bae1595eeff7fd1:0x39df1629df94c240", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.965253, "lng": 77.599979}, {"name": "Brahmins' Coffee Bar", "url": "https://www.google.com/maps/place/Brahmins'+Coffee+Bar/data=!4m2!3m1!1s0x3bae15f0a35b8ae3:0xc02176d1e45cb964", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.972749, "lng": 77.58616}, {"name": "Clock Tower", "url": "https://www.google.com/maps/place/Clock+Tower/data=!4m2!3m1!1s0x390d18b4d02c4dcf:0x356f4a280ef67a15", "metro": "Delhi", "area": "Delhi", "lat": 28.6139, "lng": 77.209}, {"name": "Khan Market", "url": "https://www.google.com/maps/place/Khan+Market/data=!4m2!3m1!1s0x390ce2e83abc927f:0x6601f4fde52a3898", "metro": "Delhi", "area": "Khan Market", "lat": 28.5985, "lng": 77.2275}, {"name": "Depaul`s", "url": "https://www.google.com/maps/place/Depaul%60s/data=!4m2!3m1!1s0x390cfd35e76fffff:0x85f409ab75c4698f", "metro": "Delhi", "area": "Delhi", "lat": 28.613089, "lng": 77.209846}, {"name": "Kori's", "url": "https://www.google.com/maps/place/Kori's/data=!4m2!3m1!1s0x390ce384be0dffbf:0x3b860fba4260f079", "metro": "Delhi", "area": "Delhi", "lat": 28.614036, "lng": 77.207235}, {"name": "Havemore Restaurant Bikaner House", "url": "https://www.google.com/maps/place/Havemore+Restaurant+Bikaner+House/data=!4m2!3m1!1s0x390ce329dc358b75:0x64ce6a7e415dddf8", "metro": "Delhi", "area": "Delhi", "lat": 28.615059, "lng": 77.210722}, {"name": "Qla", "url": "https://www.google.com/maps/place/Qla/data=!4m2!3m1!1s0x390d1e07a0fceffd:0xbe625a5f7942fad5", "metro": "Delhi", "area": "Delhi", "lat": 28.611734, "lng": 77.208563}, {"name": "Bandra Fort", "url": "https://www.google.com/maps/place/Bandra+Fort/data=!4m2!3m1!1s0x3be7c94fec37e32f:0xbd1c604e235425bc", "metro": "Mumbai", "area": "Bandra", "lat": 19.0596, "lng": 72.8295}, {"name": "Blue Tokai Coffee Roasters | Chembur", "url": "https://www.google.com/maps/place/Blue+Tokai+Coffee+Roasters+%7C+Chembur/data=!4m2!3m1!1s0x3be7c7ef0d909bb1:0xbbd9401e64f22d8", "metro": "Mumbai", "area": "Chembur", "lat": 19.0626, "lng": 72.8997}, {"name": "Anjaneyar - Homestyle South Indian Cafe", "url": "https://www.google.com/maps/place/Anjaneyar+-+Homestyle+South+Indian+Cafe/data=!4m2!3m1!1s0x3be7c7b25cdd7e8d:0x347bdcb9faafa991", "metro": "Mumbai", "area": "Mumbai", "lat": 19.076, "lng": 72.8777}, {"name": "The Bread Bar", "url": "https://www.google.com/maps/place/The+Bread+Bar/data=!4m2!3m1!1s0x3be7c7cb65035669:0x2ff121f7d56f63d6", "metro": "Mumbai", "area": "Mumbai", "lat": 19.075189, "lng": 72.878486}, {"name": "VIG Refreshments", "url": "https://www.google.com/maps/place/VIG+Refreshments/data=!4m2!3m1!1s0x3be7c8abcef7c45b:0x5467acf3faf44aea", "metro": "Mumbai", "area": "Mumbai", "lat": 19.076136, "lng": 72.87606}, {"name": "Le Cafe | Best European Cafe in Chembur, Mumbai", "url": "https://www.google.com/maps/place/Le+Cafe+%7C+Best+European+Cafe+in+Chembur,+Mumbai/data=!4m2!3m1!1s0x3be7c77779897883:0x9abb47495273443", "metro": "Mumbai", "area": "Chembur", "lat": 19.061789, "lng": 72.900486}, {"name": "Arya Bhavan by Muthuswamy Caterers, Chembur", "url": "https://www.google.com/maps/place/Arya+Bhavan+by+Muthuswamy+Caterers,+Chembur/data=!4m2!3m1!1s0x3be7c7b05b59422d:0xfe0286987b6f6f18", "metro": "Mumbai", "area": "Chembur", "lat": 19.062736, "lng": 72.89806}, {"name": "Si Nonna's", "url": "https://www.google.com/maps/place/Si+Nonna's/data=!4m2!3m1!1s0x3be7c9685ae5f8c3:0x3d10898d35458a3e", "metro": "Mumbai", "area": "Mumbai", "lat": 19.077159, "lng": 72.8793}, {"name": "CinCin, BKC", "url": "https://www.google.com/maps/place/CinCin,+BKC/data=!4m2!3m1!1s0x3be7c8e81185e7e3:0xacf7b26f032ae292", "metro": "Mumbai", "area": "BKC", "lat": 19.0662, "lng": 72.869}, {"name": "Veronica's", "url": "https://www.google.com/maps/place/Veronica's/data=!4m2!3m1!1s0x3be7c909e9d4d267:0x1c035054ddb23d00", "metro": "Mumbai", "area": "Mumbai", "lat": 19.073834, "lng": 72.877294}, {"name": "Mary Lodge by Subko", "url": "https://www.google.com/maps/place/Mary+Lodge+by+Subko/data=!4m2!3m1!1s0x3be7c9857a54fe43:0x24a2c7d62582f7ff", "metro": "Mumbai", "area": "Mumbai", "lat": 19.078075, "lng": 72.876303}, {"name": "Nandan Coffee", "url": "https://www.google.com/maps/place/Nandan+Coffee/data=!4m2!3m1!1s0x3be7d17a1beaf0c1:0x7b1aa3fc6adac6ef", "metro": "Mumbai", "area": "Mumbai", "lat": 19.0753, "lng": 72.880453}, {"name": "Boojee cafe", "url": "https://www.google.com/maps/place/Boojee+cafe/data=!4m2!3m1!1s0x3be7d1bd7cb6e00d:0x3cce5f4b931e779a", "metro": "Mumbai", "area": "Mumbai", "lat": 19.074659, "lng": 72.874967}, {"name": "abcoffee Matunga", "url": "https://www.google.com/maps/place/abcoffee+Matunga/data=!4m2!3m1!1s0x3be7cf9ce3cac20f:0xeac14dc173932d19", "metro": "Mumbai", "area": "Matunga", "lat": 19.027, "lng": 72.857}, {"name": "Jyoti Refreshments", "url": "https://www.google.com/maps/place/Jyoti+Refreshments/data=!4m2!3m1!1s0x3be7cedee8a0c1df:0x49137cf3056b0021", "metro": "Mumbai", "area": "Mumbai", "lat": 19.078922, "lng": 72.878829}, {"name": "DP's Fast Food Center Matunga | BUY 1 GET 1 FREE Offers", "url": "https://www.google.com/maps/place/DP's+Fast+Food+Center+Matunga+%7C+BUY+1+GET+1+FREE+Offers/data=!4m2!3m1!1s0x3be7ced8437f8b05:0x26336e953ce8db", "metro": "Mumbai", "area": "Matunga", "lat": 19.026189, "lng": 72.857786}, {"name": "Arya Bhavan by Muthuswamy Caterers, Matunga", "url": "https://www.google.com/maps/place/Arya+Bhavan+by+Muthuswamy+Caterers,+Matunga/data=!4m2!3m1!1s0x3be7cf286955aebb:0x65977e53ac57f984", "metro": "Mumbai", "area": "Matunga", "lat": 19.027136, "lng": 72.855361}, {"name": "Health Juice Centre", "url": "https://www.google.com/maps/place/Health+Juice+Centre/data=!4m2!3m1!1s0x3be7cf28f725ef1d:0x6b532dac52f7861", "metro": "Mumbai", "area": "Mumbai", "lat": 19.07295, "lng": 72.879032}, {"name": "Starbucks", "url": "https://www.google.com/maps/place/Starbucks/data=!4m2!3m1!1s0x3be7cfde6c9e78d9:0x6e0c36dd0e7b667a", "metro": "Mumbai", "area": "Mumbai", "lat": 19.077474, "lng": 72.874366}, {"name": "Anand Bhavan Restaurant", "url": "https://www.google.com/maps/place/Anand+Bhavan+Restaurant/data=!4m2!3m1!1s0x3be7cef0221b620b:0xb653bb4f99a6efe1", "metro": "Mumbai", "area": "Mumbai", "lat": 19.077092, "lng": 72.881383}, {"name": "Goa Portuguesa Restobar", "url": "https://www.google.com/maps/place/Goa+Portuguesa+Restobar/data=!4m2!3m1!1s0x3be7ced27051f6dd:0xdd2b10b52301aeee", "metro": "Mumbai", "area": "Mumbai", "lat": 19.072703, "lng": 72.875678}, {"name": "Light of Bharat Restaurant", "url": "https://www.google.com/maps/place/Light+of+Bharat+Restaurant/data=!4m2!3m1!1s0x3be7cecf8f139e1d:0xade621c43eece6cb", "metro": "Mumbai", "area": "Mumbai", "lat": 19.079874, "lng": 72.876799}, {"name": "Aaswad Upahar & Mithai Gruh", "url": "https://www.google.com/maps/place/Aaswad+Upahar+%26+Mithai+Gruh/data=!4m2!3m1!1s0x3be7ced06abdf6b9:0x41b08611374fbc3b", "metro": "Mumbai", "area": "Mumbai", "lat": 19.073633, "lng": 72.881262}, {"name": "Ram Ashraya", "url": "https://www.google.com/maps/place/Ram+Ashraya/data=!4m2!3m1!1s0x3be7cf78a355a875:0xcf26d432f3704474", "metro": "Mumbai", "area": "Mumbai", "lat": 19.075453, "lng": 72.87323}, {"name": "Starbucks", "url": "https://www.google.com/maps/place/Starbucks/data=!4m2!3m1!1s0x3be7d18b2ce9c87d:0xb69116196ea6a21a", "metro": "Mumbai", "area": "Mumbai", "lat": 19.079364, "lng": 72.880701}, {"name": "Yazdani Restaurant & Bakery", "url": "https://www.google.com/maps/place/Yazdani+Restaurant+%26+Bakery/data=!4m2!3m1!1s0x3be7d1dc9f02914f:0xbb57b61395953eb3", "metro": "Mumbai", "area": "Mumbai", "lat": 19.071468, "lng": 72.877898}, {"name": "Naru Noodle Bar", "url": "https://www.google.com/maps/place/Naru+Noodle+Bar/data=!4m2!3m1!1s0x3bae151f00f471fd:0x396c70c57ac2d3", "metro": "Bengaluru", "area": "Bengaluru", "lat": 12.976349, "lng": 77.601682}, {"name": "Starbucks", "url": "https://www.google.com/maps/place/Starbucks/data=!4m2!3m1!1s0x3be7c926d65575b7:0x8c03f367fe21e817", "metro": "Mumbai", "area": "Mumbai", "lat": 19.079308, "lng": 72.874217}, {"name": "Chembur SOCIAL", "url": "https://www.google.com/maps/place/Chembur+SOCIAL/data=!4m2!3m1!1s0x3be7c7aec2fab211:0xd133d4090c659ccf", "metro": "Mumbai", "area": "Chembur", "lat": 19.063759, "lng": 72.9013}, {"name": "My Regular Place, Dadar", "url": "https://www.google.com/maps/place/My+Regular+Place,+Dadar/data=!4m2!3m1!1s0x3be7cede90689d99:0x4ee45aa1669d43d4", "metro": "Mumbai", "area": "Dadar", "lat": 19.0176, "lng": 72.844}, {"name": "FES Cafe & Desserts", "url": "https://www.google.com/maps/place/FES+Cafe+%26+Desserts/data=!4m2!3m1!1s0x390d19c97d72c3d7:0x6a1abbbf699d1a3", "metro": "Delhi", "area": "Delhi", "lat": 28.615975, "lng": 77.207496}, {"name": "Manam Chocolate", "url": "https://www.google.com/maps/place/Manam+Chocolate/data=!4m2!3m1!1s0x390ce11f0dea83b3:0xe80cf8678d081a4", "metro": "Delhi", "area": "Delhi", "lat": 28.6132, "lng": 77.211964}, {"name": "Laphing's Corner", "url": "https://www.google.com/maps/place/Laphing's+Corner/data=!4m2!3m1!1s0x390d1d882324c5c5:0x801d133744328f3f", "metro": "Delhi", "area": "Delhi", "lat": 28.612559, "lng": 77.206058}, {"name": "Lha Kitchen", "url": "https://www.google.com/maps/place/Lha+Kitchen/data=!4m2!3m1!1s0x390d1dfbb764e497:0xe92deadad7fa92b", "metro": "Delhi", "area": "Delhi", "lat": 28.616822, "lng": 77.210216}, {"name": "Vietnam-ease Càphê", "url": "https://www.google.com/maps/place/Vietnam-ease+C%C3%A0ph%C3%AA/data=!4m2!3m1!1s0x390d1900042c9219:0x56698e05a6ffaf3", "metro": "Delhi", "area": "Delhi", "lat": 28.61085, "lng": 77.210434}, {"name": "1000% x Savorworks Artisan Coffee Bar", "url": "https://www.google.com/maps/place/1000%25+x+Savorworks+Artisan+Coffee+Bar/data=!4m2!3m1!1s0x390d19736d1580e9:0x57896860997baadf", "metro": "Delhi", "area": "Delhi", "lat": 28.615374, "lng": 77.205411}];
+const METRO_ORDER = ['Bengaluru','Mumbai','Delhi','Goa'];
+const METRO_CENTER = {Bengaluru:[12.9716,77.5946], Mumbai:[19.0760,72.8777], Delhi:[28.6139,77.2090], Goa:[15.58,73.74]};
+
+function monogram(n){ const m = n.replace(/[^A-Za-z0-9]/g,'').charAt(0); return (m||'•').toUpperCase(); }
+
+const map = L.map('map',{zoomControl:false, attributionControl:true, minZoom:4}).setView([17.5,76],5);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:20
+}).addTo(map);
+
+function pinIcon(letter){
+  const html = '<div class="pin-wrap">'
+    + '<svg class="pin-svg" width="36" height="46" viewBox="0 0 36 46" xmlns="http://www.w3.org/2000/svg">'
+    + '<path d="M18 45C18 45 33 27.5 33 16.5C33 8.4 26.3 2 18 2C9.7 2 3 8.4 3 16.5C3 27.5 18 45 18 45Z" '
+    + 'fill="url(#goldGrad)" stroke="#fff4d6" stroke-width="1.4"/>'
+    + '<circle cx="18" cy="16.5" r="10.5" fill="url(#goldCore)" stroke="#C7A24A" stroke-width="1"/>'
+    + '</svg><div class="pin-mono">'+letter+'</div></div>';
+  return L.divIcon({className:'', html, iconSize:[36,46], iconAnchor:[18,44], popupAnchor:[0,-40], tooltipAnchor:[0,-34]});
+}
+
+const cluster = L.markerClusterGroup({
+  maxClusterRadius:46, showCoverageOnHover:false, spiderfyDistanceMultiplier:1.3,
+  iconCreateFunction:function(c){
+    const n = c.getChildCount();
+    const s = n<10?40:n<40?50:60;
+    return L.divIcon({html:'<div class="clust" style="width:'+s+'px;height:'+s+'px;font-size:'+(s*0.4)+'px">'+n+'</div>',
+      className:'', iconSize:[s,s]});
+  }
+});
+
+const markers = [];
+PLACES.forEach((p,i)=>{
+  const L_ = monogram(p.name);
+  const mk = L.marker([p.lat,p.lng],{icon:pinIcon(L_)});
+  mk.bindTooltip('<span class="tmono">'+L_+'</span><span>'+escapeHtml(p.name)+'</span>',
+    {className:'lux-tip', direction:'top', offset:[0,-2], opacity:1});
+  mk.bindPopup(
+    '<div class="pop-in"><div class="pop-mono">'+L_+'</div>'
+    + '<div class="pop-name">'+escapeHtml(p.name)+'</div>'
+    + '<div class="pop-area">'+escapeHtml(p.area+' · '+p.metro)+'</div>'
+    + (p.url?'<a class="pop-link" href="'+p.url+'" target="_blank" rel="noopener">Open in Maps ↗</a>':'')
+    + '</div>', {className:'lux-pop', closeButton:true, minWidth:230, maxWidth:230});
+  p._mk = mk; p._L = L_; markers.push(mk);
+  cluster.addLayer(mk);
+});
+map.addLayer(cluster);
+
+// fit to all
+const bounds = L.latLngBounds(PLACES.map(p=>[p.lat,p.lng]));
+map.fitBounds(bounds,{padding:[70,70], paddingTopLeft:[360,90]});
+
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ---- side panel ---- */
+const listEl = document.getElementById('list');
+const chipsEl = document.getElementById('chips');
+const searchEl = document.getElementById('search');
+document.getElementById('hcount').textContent = PLACES.length+' Spots';
+document.getElementById('pcount').textContent = PLACES.length+' tables across '+METRO_ORDER.length+' cities';
+
+let activeMetro = 'All';
+const metros = ['All',...METRO_ORDER.filter(m=>PLACES.some(p=>p.metro===m))];
+metros.forEach(m=>{
+  const c = document.createElement('button');
+  c.className='chip'+(m==='All'?' active':''); c.textContent=m; c.dataset.metro=m;
+  c.onclick=()=>{activeMetro=m; [...chipsEl.children].forEach(x=>x.classList.toggle('active',x.dataset.metro===m)); render();};
+  chipsEl.appendChild(c);
+});
+
+function render(){
+  const q = searchEl.value.trim().toLowerCase();
+  listEl.innerHTML='';
+  let shown=0, delay=0;
+  METRO_ORDER.forEach(metro=>{
+    if(activeMetro!=='All' && activeMetro!==metro) return;
+    const group = PLACES.filter(p=>p.metro===metro &&
+      (!q || p.name.toLowerCase().includes(q) || p.area.toLowerCase().includes(q)));
+    if(!group.length) return;
+    const gl = document.createElement('div'); gl.className='group-label'; gl.textContent=metro+' · '+group.length;
+    listEl.appendChild(gl);
+    group.sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+      shown++;
+      const it = document.createElement('div'); it.className='item';
+      it.style.animationDelay=(delay)+'ms'; delay+=14;
+      it.innerHTML='<div class="mono">'+p._L+'</div><div class="meta"><div class="nm">'+escapeHtml(p.name)
+        +'</div><div class="ar">'+escapeHtml(p.area)+'</div></div>';
+      it.onclick=()=>focusPlace(p);
+      it.onmouseenter=()=>{const el=p._mk.getElement(); if(el) el.classList.add('pin-hot');};
+      it.onmouseleave=()=>{const el=p._mk.getElement(); if(el) el.classList.remove('pin-hot');};
+      listEl.appendChild(it);
+    });
+  });
+  if(!shown){listEl.innerHTML='<div style="padding:40px 20px;text-align:center;color:var(--ink-soft);font-family:var(--serif);font-style:italic">No places found</div>';}
+}
+function focusPlace(p){
+  map.flyTo([p.lat,p.lng], 16, {duration:1.1});
+  setTimeout(()=>{ cluster.zoomToShowLayer(p._mk, ()=> p._mk.openPopup()); }, 1150);
+  if(window.innerWidth<=760) document.getElementById('panel').classList.remove('open');
+}
+searchEl.addEventListener('input', render);
+render();
+
+document.getElementById('toggle').onclick=()=>document.getElementById('panel').classList.toggle('open');
+
+/* hide loader */
+function hideLoader(){const l=document.getElementById('loader'); l.classList.add('gone'); setTimeout(()=>l.remove(),800);}
+map.whenReady(()=>setTimeout(hideLoader, 650));
+setTimeout(hideLoader, 3000);
+</script>
+</body>
+</html>
