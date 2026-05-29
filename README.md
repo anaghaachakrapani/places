@@ -12,11 +12,6 @@ Designed with:
 - responsive mobile layout
 - smooth micro-interactions
 
-## Preview
-
-Add a screenshot here:
-
-![Preview](./assets/preview.png)
 
 ---
 
